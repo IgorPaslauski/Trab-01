@@ -12,6 +12,7 @@
 char *senha_alvo;
 int tam_senha;
 atomic_int achou = 0;
+atomic_ullong tentativas = 0;
 
 void *forca_bruta(void *arg)
 {
@@ -35,12 +36,15 @@ void *forca_bruta(void *arg)
         }
         tentativa[tam_senha] = '\0';
 
+        tentativas++;
+
         if (memcmp(tentativa, senha_alvo, tam_senha) == 0)
         {
             if (!achou)
             {
                 achou = 1;
                 printf("Senha encontrada: %s\n", tentativa);
+                printf("Tentativas realizadas: %llu\n", (unsigned long long)tentativas);
             }
             break;
         }
@@ -98,6 +102,7 @@ int main()
     for (qtd_threads = 1; qtd_threads <= 8; qtd_threads++)
     {
         achou = 0;
+        tentativas = 0;
         medir_tempo(qtd_threads);
     }
 

@@ -3,8 +3,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
-
-#define CHARSET "0123456789"
+#define CHARSET "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{}|;:,.<>?"
 #define CHARSET_SIZE (sizeof(CHARSET) - 1)
 #define MAX_PASSWORD_LENGTH 100 // Senha pode ter até 100 caracteres
 

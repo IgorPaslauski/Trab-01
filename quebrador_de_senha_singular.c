@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <time.h>
-#include <stdatomic.h>
 #include <ctype.h>
 
 #define CONJUNTO_NUMERICOS "0123456789"
@@ -13,8 +11,6 @@
 
 char *senha_alvo;
 int tam_senha;
-atomic_int achou = 0;
-atomic_ullong tentativas = 0;
 const char *conjunto_atual;
 int tam_conjunto;
 
@@ -41,20 +37,17 @@ void definir_charset()
     tam_conjunto = strlen(conjunto_atual);
 }
 
-void *forca_bruta(void *arg)
+void forca_bruta()
 {
-    int *args = (int *)arg;
-    int id_thread = args[0];
-    int qtd_threads = args[1];
-    free(arg);
+    char tentativa[TAM_MAX_SENHA + 1];
 
     unsigned long long total_combinacoes = 1;
     for (int i = 0; i < tam_senha; i++)
         total_combinacoes *= tam_conjunto;
 
-    char tentativa[TAM_MAX_SENHA + 1];
+    unsigned long long contador_local = 0;
 
-    for (unsigned long long i = id_thread; i < total_combinacoes && !achou; i += qtd_threads)
+    for (unsigned long long i = 0; i < total_combinacoes; i++)
     {
         unsigned long long indice = i;
         for (int j = 0; j < tam_senha; j++)
@@ -64,53 +57,30 @@ void *forca_bruta(void *arg)
         }
         tentativa[tam_senha] = '\0';
 
-        atomic_fetch_add(&tentativas, 1);
+        contador_local++;
 
         if (memcmp(tentativa, senha_alvo, tam_senha) == 0)
         {
-            if (atomic_exchange(&achou, 1) == 0)
-            {
-                printf("Senha encontrada: %s\n", tentativa);
-                printf("Tentativas realizadas: %llu\n", (unsigned long long)tentativas);
-            }
+            printf("Senha encontrada: %s\n", tentativa);
+            printf("Tentativas realizadas: %llu\n", (unsigned long long)contador_local);
             break;
         }
     }
-
-    return NULL;
 }
 
-void medir_tempo(int qtd_threads)
+void medir_tempo()
 {
     clock_t inicio, fim;
     double tempo_gasto;
 
-    pthread_t *threads = malloc(qtd_threads * sizeof(pthread_t));
-
     inicio = clock();
 
-    for (int i = 0; i < qtd_threads; i++)
-    {
-        int *arg = malloc(2 * sizeof(int));
-        arg[0] = i;
-        arg[1] = qtd_threads;
-
-        if (pthread_create(&threads[i], NULL, forca_bruta, arg) != 0)
-        {
-            perror("Erro ao criar thread");
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    for (int i = 0; i < qtd_threads; i++)
-        pthread_join(threads[i], NULL);
+    forca_bruta();
 
     fim = clock();
     tempo_gasto = (double)(fim - inicio) / CLOCKS_PER_SEC;
 
-    printf("Tempo com %d threads: %.2f segundos\n", qtd_threads, tempo_gasto);
-
-    free(threads);
+    printf("Tempo com 1 thread: %.2f segundos\n", tempo_gasto);
 }
 
 int main()
@@ -130,12 +100,7 @@ int main()
 
     printf("Charset escolhido: %s\n", conjunto_atual);
 
-    for (int qtd_threads = 1; qtd_threads <= 8; qtd_threads++)
-    {
-        achou = 0;
-        tentativas = 0;
-        medir_tempo(qtd_threads);
-    }
+    medir_tempo();
 
     free(senha_alvo);
     return 0;

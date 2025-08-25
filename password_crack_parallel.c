@@ -3,128 +3,104 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
-#define CHARSET "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{}|;:,.<>?"
-#define CHARSET_SIZE (sizeof(CHARSET) - 1)
-#define MAX_PASSWORD_LENGTH 100 // Senha pode ter até 100 caracteres
+#include <stdatomic.h>
 
-// Variáveis globais
-char *target_password;
-int target_len;
-int found = 0;
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#define CONJUNTO "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{}|;:,.<>?"
+#define TAM_CONJUNTO (sizeof(CONJUNTO) - 1)
+#define TAM_MAX_SENHA 100
 
-// Função para gerar combinações
-void *crack_password(void *arg)
+char *senha_alvo;
+int tam_senha;
+atomic_int achou = 0;
+
+void *forca_bruta(void *arg)
 {
-    int thread_id = *((int *)arg);
-    int num_threads = *((int *)(arg + sizeof(int)));
-    int total_combinations = 1;
-    for (int i = 0; i < target_len; i++)
+    int id_thread = ((int *)arg)[0];
+    int qtd_threads = ((int *)arg)[1];
+    free(arg);
+
+    long long total_combinacoes = 1;
+    for (int i = 0; i < tam_senha; i++)
+        total_combinacoes *= TAM_CONJUNTO;
+
+    char tentativa[TAM_MAX_SENHA + 1];
+
+    for (long long i = id_thread; i < total_combinacoes && !achou; i += qtd_threads)
     {
-        total_combinations *= CHARSET_SIZE;
-    }
-
-    int start_index = (total_combinations / num_threads) * thread_id;
-    int end_index = (total_combinations / num_threads) * (thread_id + 1);
-
-    if (thread_id == num_threads - 1)
-    {
-        end_index = total_combinations;
-    }
-
-    // Gerar as combinações dentro do intervalo alocado para a thread
-    char *attempt = (char *)malloc(target_len + 1);
-
-    for (int i = start_index; i < end_index && !found; i++)
-    {
-        int index = i;
-        for (int j = 0; j < target_len; j++)
+        long long indice = i;
+        for (int j = 0; j < tam_senha; j++)
         {
-            attempt[j] = CHARSET[index % CHARSET_SIZE];
-            index /= CHARSET_SIZE;
+            tentativa[j] = CONJUNTO[indice % TAM_CONJUNTO];
+            indice /= TAM_CONJUNTO;
         }
-        attempt[target_len] = '\0';
+        tentativa[tam_senha] = '\0';
 
-        // Verificar se a tentativa é igual à senha
-        pthread_mutex_lock(&mutex);
-        if (strcmp(attempt, target_password) == 0)
+        if (memcmp(tentativa, senha_alvo, tam_senha) == 0)
         {
-            found = 1;
-            printf("Senha encontrada: %s\n", attempt);
+            if (!achou)
+            {
+                achou = 1;
+                printf("Senha encontrada: %s\n", tentativa);
+            }
+            break;
         }
-        pthread_mutex_unlock(&mutex);
     }
 
-    free(attempt);
     return NULL;
 }
 
-void measure_time(int num_threads)
+void medir_tempo(int qtd_threads)
 {
-    clock_t start, end;
-    double cpu_time_used;
+    clock_t inicio, fim;
+    double tempo_gasto;
 
-    // Cria as threads
-    pthread_t *threads = (pthread_t *)malloc(num_threads * sizeof(pthread_t));
-    int *thread_ids = (int *)malloc(num_threads * sizeof(int));
+    pthread_t *threads = (pthread_t *)malloc(qtd_threads * sizeof(pthread_t));
 
-    // Inicia o cronômetro
-    start = clock();
+    inicio = clock();
 
-    // Cria as threads
-    for (int i = 0; i < num_threads; i++)
+    for (int i = 0; i < qtd_threads; i++)
     {
-        thread_ids[i] = i;
         int *arg = (int *)malloc(sizeof(int) * 2);
-        arg[0] = i;           // ID da thread
-        arg[1] = num_threads; // Número de threads
+        arg[0] = i;
+        arg[1] = qtd_threads;
 
-        if (pthread_create(&threads[i], NULL, crack_password, arg) != 0)
+        if (pthread_create(&threads[i], NULL, forca_bruta, arg) != 0)
         {
             perror("Erro ao criar thread");
             return;
         }
     }
 
-    // Espera todas as threads terminarem
-    for (int i = 0; i < num_threads; i++)
+    for (int i = 0; i < qtd_threads; i++)
     {
         pthread_join(threads[i], NULL);
     }
 
-    // Para o cronômetro
-    end = clock();
-    cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+    fim = clock();
+    tempo_gasto = ((double)(fim - inicio)) / CLOCKS_PER_SEC;
 
-    // Exibe o tempo que levou para quebrar a senha
-    printf("Tempo para quebrar a senha com %d threads: %.2f segundos\n", num_threads, cpu_time_used);
+    printf("Tempo com %d threads: %.2f segundos\n", qtd_threads, tempo_gasto);
 
-    // Libera a memória alocada
     free(threads);
-    free(thread_ids);
 }
 
 int main()
 {
-    int num_threads;
+    int qtd_threads;
 
-    // Solicita a senha a ser quebrada
-    printf("Digite a senha a ser quebrada: ");
-    target_password = (char *)malloc(MAX_PASSWORD_LENGTH * sizeof(char));
-    fgets(target_password, MAX_PASSWORD_LENGTH, stdin);
-    target_password[strcspn(target_password, "\n")] = '\0'; // Remove o '\n'
+    printf("Digite a senha: ");
+    senha_alvo = (char *)malloc(TAM_MAX_SENHA * sizeof(char));
+    fgets(senha_alvo, TAM_MAX_SENHA, stdin);
+    senha_alvo[strcspn(senha_alvo, "\n")] = '\0';
 
-    target_len = strlen(target_password);
+    tam_senha = strlen(senha_alvo);
 
-    // Medir o tempo com diferentes números de threads
-    for (num_threads = 1; num_threads <= 8; num_threads++)
-    {                              // Testa de 1 a 8 threads
-        found = 0;                 // Reseta a flag de encontrado
-        measure_time(num_threads); // Mede o tempo para cada número de threads
+    for (qtd_threads = 1; qtd_threads <= 8; qtd_threads++)
+    {
+        achou = 0;
+        medir_tempo(qtd_threads);
     }
 
-    // Libera a memória da senha
-    free(target_password);
-
+    free(senha_alvo);
     return 0;
 }
